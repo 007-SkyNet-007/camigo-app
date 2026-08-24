@@ -1,0 +1,8 @@
+{
+  "nota": "Orden = prioridad. El primero es el primario. La app y el mapa web leen este archivo al arrancar; para promover un servidor, muevelo arriba de la lista.",
+  "actualizado": "2026-08-23",
+  "servidores": [
+    { "nombre": "root-pc",        "url": "https://root-pc.taild66fc7.ts.net/api" },
+    { "nombre": "desktop-backup", "url": "https://desktop-qicouqb.taild66fc7.ts.net/api" }
+  ]
+}

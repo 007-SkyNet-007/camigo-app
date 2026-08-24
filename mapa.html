@@ -2,136 +2,164 @@
 <html lang="es">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>cAmiGo — conectando…</title>
-<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🚚</text></svg>">
+<meta name="viewport"
+      content="width=device-width,initial-scale=1">
+<title>Mapa CamionesNLD</title>
 <style>
-    * { margin:0; padding:0; box-sizing:border-box }
-    body {
-        min-height:100dvh;
-        display:flex; align-items:center; justify-content:center;
-        background:#0f172a; color:#e2e8f0;
-        font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
-        padding:20px; text-align:center;
-    }
-    .tarjeta { max-width:420px; width:100% }
-    .logo { font-size:56px; line-height:1 }
-    h1 { font-size:1.25rem; margin:14px 0 6px }
-    p   { font-size:.9rem; color:#94a3b8 }
-    .spinner {
-        width:44px; height:44px; margin:22px auto 10px;
-        border:4px solid #1e293b; border-top-color:#38bdf8;
-        border-radius:50%; animation:girar .8s linear infinite;
-    }
-    @keyframes girar { to { transform:rotate(360deg) } }
-    #estado { font-size:.82rem; color:#64748b; min-height:2.4em; margin-top:8px }
-    .error .spinner { display:none }
-    .btn {
-        display:none; margin:16px auto 0; padding:10px 26px;
-        background:#38bdf8; color:#0f172a; font-weight:700;
-        border:none; border-radius:999px; cursor:pointer;
-        font-size:.9rem;
-    }
-    .error .btn { display:inline-block }
+  body{margin:0;min-height:100vh;display:flex;
+       align-items:center;justify-content:center;
+       background:#0f172a;color:#e2e8f0;
+       font-family:system-ui,-apple-system,sans-serif}
+  .caja{text-align:center;padding:32px;max-width:420px}
+  .gusano{font-size:56px;margin-bottom:8px}
+  h1{font-size:1.15rem;font-weight:600;margin:.2em 0}
+  p{font-size:.85rem;color:#94a3b8;line-height:1.5}
+  .girar{display:inline-block;width:26px;height:26px;
+         border:3px solid #334155;border-top-color:#38bdf8;
+         border-radius:50%;animation:g 1s linear infinite;
+         margin-top:14px}
+  @keyframes g{to{transform:rotate(360deg)}}
+  .lista{margin-top:22px;display:flex;flex-direction:column;
+         gap:10px}
+  .lista a{display:block;padding:11px 16px;border-radius:10px;
+           background:#1e293b;color:#7dd3fc;
+           text-decoration:none;font-size:.85rem;
+           border:1px solid #334155}
+  .lista a:active{background:#273449}
+  .aviso{margin-top:18px;font-size:.72rem;color:#64748b}
 </style>
 </head>
 <body>
-<div class="tarjeta" id="tarjeta">
-    <div class="logo">🚚</div>
-    <h1>cAmiGo</h1>
-    <p>Buscando el servidor activo…</p>
-    <div class="spinner"></div>
-    <div id="estado"></div>
-    <button class="btn" onclick="location.reload()">Reintentar</button>
+<div class="caja">
+  <div class="gusano">🚌</div>
+  <h1>Mapa CamionesNLD</h1>
+  <p id="estado">Buscando el servidor activo…</p>
+  <div class="girar" id="spinner"></div>
+  <div class="lista" id="botones"></div>
+  <p class="aviso" id="nota"></p>
 </div>
-
 <script>
-(function () {
-    'use strict';
+(function(){
+"use strict";
 
-    var FUENTE =
-        'https://raw.githubusercontent.com/' +
-        '007-SkyNet-007/camigo-app/main/' +
-        'apk/servidores.json';
+var ESTADO = document.getElementById("estado");
+var SPINNER = document.getElementById("spinner");
+var BOTONES = document.getElementById("botones");
+var NOTA = document.getElementById("nota");
 
-    var estado = document.getElementById('estado');
-    var tarjeta = document.getElementById('tarjeta');
+/*
+ * Ventana de frescura del heartbeat del líder
+ * (se publica cada ~4 min; toleramos relojes
+ * desincronizados y commits fallidos).
+ */
+var FRESCURA_MS = 12 * 60 * 1000;
 
-    function decir(txt) { estado.textContent = txt; }
+function base(url){
+  return url.replace(/\/api\/?$/,"").replace(/\/$/,"");
+}
 
-    function probar(urlBase, ms) {
-        return new Promise(function (resolver) {
-            var controlador = new AbortController();
-            var temporizador = setTimeout(
-                function () { controlador.abort(); },
-                ms || 4000);
+function ir(url){
+  ESTADO.textContent = "Conectando…";
+  location.replace(url);
+}
 
-            fetch(urlBase + '/api/Camiones', {
-                method: 'GET',
-                cache: 'no-store',
-                signal: controlador.signal
-            })
-            .then(function (r) {
-                clearTimeout(temporizador);
-                resolver(r.ok);
-            })
-            .catch(function () {
-                clearTimeout(temporizador);
-                resolver(false);
-            });
-        });
+function mostrarBotones(servidores, mensaje){
+  SPINNER.style.display = "none";
+  if (mensaje) ESTADO.textContent = mensaje;
+  BOTONES.innerHTML = "";
+  servidores.forEach(function(s){
+    var a = document.createElement("a");
+    a.href = base(s.url) + "/mapa.html";
+    a.textContent = "🗺️ Abrir mapa — " +
+      (s.nombre || s.url);
+    BOTONES.appendChild(a);
+  });
+}
+
+/*
+ * FASE 1 (sin permisos): leer el heartbeat que
+ * el servidor LÍDER publica en este mismo sitio.
+ * Mismo origen = cero avisos del navegador.
+ */
+fetch("apk/servidores.json", {cache:"no-store"})
+  .then(function(r){ return r.json(); })
+  .then(function(lista){
+    var servidores = lista.servidores || [];
+    if (!servidores.length){
+      mostrarBotones([],
+        "No hay servidores registrados todavía.");
+      return null;
     }
+    return fetch("apk/servidor-activo.json",
+                 {cache:"no-store"})
+      .then(function(r){ return r.ok ? r.json() : null; })
+      .then(function(activo){
+        if (activo && activo.utc && activo.url){
+          var edad = Date.now() -
+            new Date(activo.utc).getTime();
+          if (edad >= -2*60*1000 &&
+              edad <= FRESCURA_MS){
+            ir(base(activo.url) + "/mapa.html");
+            return true;
+          }
+        }
+        return false;
+      })
+      .then(function(redirigio){
+        if (redirigio) return;
+        /*
+         * FASE 2 (respaldo): nadie publicó
+         * latido reciente. Sondeamos uno por uno
+         * con etiquetas <script> y ofrecemos los
+         * enlaces directos mientras tanto.
+         */
+        ESTADO.textContent =
+          "Verificando cuál servidor está vivo…";
+        NOTA.textContent =
+          "Si tu navegador pregunta por acceso a la " +
+          "red, acéptalo: es solo para encontrar el " +
+          "servidor. También puedes entrar directo:";
+        mostrarBotones(servidores, "");
+        sondear(servidores, 0);
+      });
+  })
+  .catch(function(){
+    ESTADO.textContent =
+      "No se pudo cargar la lista de servidores.";
+    SPINNER.style.display = "none";
+  });
 
-    function intentar() {
-        decir('Consultando la lista de servidores…');
-
-        fetch(FUENTE + '?t=' + Date.now(), {
-            cache: 'no-store'
-        })
-        .then(function (r) {
-            if (!r.ok) throw new Error('lista');
-            return r.json();
-        })
-        .then(async function (cfg) {
-            var servidores = cfg.servidores || [];
-
-            if (!servidores.length) {
-                fallar('No hay servidores registrados aún.');
-                return;
-            }
-
-            for (var i = 0; i < servidores.length; i++) {
-                var s = servidores[i];
-                var url = String(s.url).replace(/\/+$/, '');
-
-                decir('Probando ' + (s.nombre || ('servidor ' +
-                    (i + 1))) + '…');
-
-                if (await probar(url)) {
-                    decir('Conectado con ' +
-                        (s.nombre || 'servidor') +
-                        '. Entrando…');
-                    location.replace(url);
-                    return;
-                }
-            }
-
-            fallar('Ningún servidor responde ahora mismo. ' +
-                   'Reintentamos automáticamente.');
-        })
-        .catch(function () {
-            fallar('No pudimos leer la lista de servidores. ' +
-                   'Reintentamos automáticamente.');
-        });
-    }
-
-    function fallar(mensaje) {
-        decir(mensaje);
-        tarjeta.classList.add('error');
-        setTimeout(intentar, 10000);
-    }
-
-    intentar();
+/*
+ * Sondeo con <script>: onload = servidor
+ * alcanzable aunque devuelva JSON (no es JS).
+ * onerror = caído o inalcanzable.
+ */
+function sondear(servidores, i){
+  if (i >= servidores.length){
+    ESTADO.textContent =
+      "Ningún servidor responde ahora mismo.";
+    SPINNER.style.display = "none";
+    return;
+  }
+  var destino = base(servidores[i].url) + "/mapa.html";
+  var prueba = document.createElement("script");
+  var listo = false;
+  var t = setTimeout(function(){
+    if (!listo){ listo = true; prueba.remove();
+      sondear(servidores, i + 1); }
+  }, 5000);
+  prueba.onload = function(){
+    if (!listo){ listo = true; clearTimeout(t);
+      ir(destino); }
+  };
+  prueba.onerror = function(){
+    if (!listo){ listo = true; clearTimeout(t);
+      prueba.remove(); sondear(servidores, i + 1); }
+  };
+  prueba.src = base(servidores[i].url) +
+    "/api/Cluster/salud?sondeo=1";
+  document.body.appendChild(prueba);
+}
 })();
 </script>
 </body>

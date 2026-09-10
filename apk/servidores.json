@@ -1,7 +1,0 @@
-{
-  "nota": "Orden = prioridad. El primero es el primario. La app y el mapa web leen este archivo al arrancar; para promover un servidor, muevelo arriba de la lista.",
-  "actualizado": "2026-08-23",
-  "servidores": [
-    { "nombre": "principal", "url": "https://desktop-5hhssgg.tailaccfad.ts.net/api" }
-  ]
-}
